@@ -1,0 +1,15 @@
+portName: "COM11"
+baudRate: 115200
+combos:
+  - combo: 0
+    deviceID: "{9285d823-5344-4e5e-a6f6-c3435216944e}" # SteelSeries Sonar - Gaming
+  - combo: 1
+    deviceID: "{21b28250-8fc2-4632-ac6a-d9c25993e1fa}" # SteelSeries Sonar - Chat
+  - combo: 2
+    deviceID: "{0ce8573c-d116-49b3-8619-5349caa0f6f9}" # SteelSeries Sonar - Media
+  - combo: 3
+    deviceID: "{322406ce-2d81-4885-a312-d0f3f64b7db5}" # SteelSeries Sonar - Aux
+  - combo: 4
+    deviceID: "{90ae6596-507c-44cc-bed9-ae9534a97265}" # Speakers (Realtek(R) Audio)
+configReloadPeriod: 10m
+logFile: "app.log"
