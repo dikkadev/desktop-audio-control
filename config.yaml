@@ -12,5 +12,5 @@ combos:
   - combo: 4
     deviceID: "{0.0.0.00000000}.{90ae6596-507c-44cc-bed9-ae9534a97265}" # Speakers (Realtek(R) Audio)
 configReloadPeriod: 10m
-setEventPeriod: 5m
-logFile: "app.log"
+setEventPeriod: 5s
+# logFile: "app.log"

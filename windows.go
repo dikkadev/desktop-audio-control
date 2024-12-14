@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bufio"
+	"desktop-audio-ctrl/pkg/reliableserial"
 	"desktop-audio-ctrl/protocol"
 	"flag"
 	"fmt"
-	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dikkadev/prettyslog"
 	"github.com/go-ole/go-ole"
 	"github.com/moutend/go-wca/pkg/wca"
-	"github.com/tarm/serial"
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,8 +30,7 @@ type Config struct {
 	BaudRate           int           `yaml:"baudRate"`
 	Combos             []ComboConfig `yaml:"combos"`
 	ConfigReloadPeriod time.Duration `yaml:"configReloadPeriod"`
-	SetEventPeriod     time.Duration `yaml:"setEventPeriod"` // New field
-	LogFile            string        `yaml:"logFile"`
+	SetEventPeriod     time.Duration `yaml:"setEventPeriod"`
 }
 
 var (
@@ -43,19 +42,10 @@ var (
 	mmde     *wca.IMMDeviceEnumerator
 	mmdeOnce sync.Once
 
-	writeChan    = make(chan protocol.Event, 100) // Buffered channel for outgoing writes
-	eventChan    = make(chan protocol.Event, 100) // Buffered channel for incoming events
-	shutdownChan = make(chan struct{})            // Channel to signal shutdown
+	writeChan    = make(chan protocol.Event, 100)
+	eventChan    = make(chan protocol.Event, 100)
+	shutdownChan = make(chan struct{})
 )
-
-func initLogging(logFile string) {
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal("Error opening log file:", err)
-	}
-	log.SetOutput(file)
-	log.Println("Logging initialized.")
-}
 
 func loadConfig() {
 	configLock.Lock()
@@ -63,19 +53,22 @@ func loadConfig() {
 
 	data, err := os.ReadFile(configFile)
 	if err != nil {
-		log.Println("Error reading config file:", err)
+		// log.Println("Error reading config file:", err)
+		slog.Warn("error reading config file", "err", err)
 		return
 	}
 
 	var newConfig Config
 	err = yaml.Unmarshal(data, &newConfig)
 	if err != nil {
-		log.Println("Error parsing config file:", err)
+		// log.Println("Error parsing config file:", err)
+		slog.Warn("error parsing config file", "err", err)
 		return
 	}
 
 	config = newConfig
-	log.Println("Configuration reloaded.")
+	// log.Println("Configuration reloaded.")
+	slog.Info("configuration reloaded")
 }
 
 func getComboConfig(combo uint8) *ComboConfig {
@@ -122,7 +115,8 @@ func getDeviceEnumerator() (*wca.IMMDeviceEnumerator, error) {
 	mmdeOnce.Do(func() {
 		err = wca.CoCreateInstance(wca.CLSID_MMDeviceEnumerator, 0, wca.CLSCTX_ALL, wca.IID_IMMDeviceEnumerator, &mmde)
 		if err != nil {
-			log.Println("Failed to create IMMDeviceEnumerator:", err)
+			// log.Println("Failed to create IMMDeviceEnumerator:", err)
+			slog.Error("failed to create IMMDeviceEnumerator", "err", err)
 		}
 	})
 	return mmde, err
@@ -159,11 +153,13 @@ func oleInvoke(deviceID string, f func(aev *wca.IAudioEndpointVolume) (interface
 }
 
 func handleEvent(event protocol.Event) {
-	log.Println("Received event:", event.String())
+	// log.Println("Received event:", event.String())
+	slog.Info("received event", "event", event.String())
 
 	comboConfig := getComboConfig(event.Combo)
 	if comboConfig == nil {
-		log.Println("No configuration found for combo:", event.Combo)
+		// log.Println("No configuration found for combo:", event.Combo)
+		slog.Warn("no configuration found for combo", "combo", event.Combo)
 		return
 	}
 
@@ -178,9 +174,11 @@ func handleEvent(event protocol.Event) {
 
 	err := setVolume(comboConfig.DeviceID, volumeLevel)
 	if err != nil {
-		log.Println("Error setting volume for device", comboConfig.DeviceID, ":", err)
+		// log.Println("Error setting volume for device", comboConfig.DeviceID, ":", err)
+		slog.Error("error setting volume", "deviceID", comboConfig.DeviceID, "err", err)
 	} else {
-		log.Printf("Set volume to %d%% for device %s", state, comboConfig.DeviceID)
+		// log.Printf("Set volume to %d%% for device %s", state, comboConfig.DeviceID)
+		slog.Info("set volume", "state", state, "deviceID", comboConfig.DeviceID)
 	}
 }
 
@@ -197,103 +195,14 @@ func configReloader(shutdownChan <-chan struct{}) {
 		case <-ticker.C:
 			loadConfig()
 		case <-shutdownChan:
-			log.Println("Configuration reloader shutting down.")
+			// log.Println("Configuration reloader shutting down.")
+			slog.Info("configuration reloader shutting down")
 			return
 		}
 	}
 }
 
-func marshalEvent(event protocol.Event) []byte {
-	return protocol.Marshal(event)
-}
-
-func serialHandler(
-	s *serial.Port,
-	writeChan <-chan protocol.Event,
-	eventChan chan<- protocol.Event,
-	shutdownChan <-chan struct{},
-) {
-	// Initialize OLE for this goroutine
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED)
-	if err != nil {
-		log.Fatalf("Failed to initialize COM in serialHandler: %v", err)
-	}
-	defer ole.CoUninitialize()
-
-	reader := bufio.NewReader(s)
-	buffer := make([]byte, 0, 5)
-	const (
-		maxConsecutiveErrors = 10
-		backoffDuration      = 1 * time.Second
-	)
-	consecutiveErrors := 0
-
-	for {
-		select {
-		case <-shutdownChan:
-			log.Println("Serial handler shutting down.")
-			return
-		default:
-			// Attempt to read a byte
-			byteRead, err := reader.ReadByte()
-			if err != nil {
-				if err == io.EOF {
-					log.Println("EOF received, serial handler shutting down.")
-					return
-				}
-				log.Printf("Error reading from serial port: %v", err)
-				consecutiveErrors++
-				if consecutiveErrors >= maxConsecutiveErrors {
-					log.Printf("Exceeded maximum consecutive errors (%d). Shutting down serial handler.", maxConsecutiveErrors)
-					return
-				}
-				time.Sleep(backoffDuration) // Prevent tight loop on errors
-				continue
-			}
-
-			// Reset error count on successful read
-			consecutiveErrors = 0
-
-			buffer = append(buffer, byteRead)
-			// Process buffer for complete packets (assuming 5-byte packets)
-			for len(buffer) >= 5 {
-				packet := buffer[:5]
-				event, ok := protocol.Unmarshal(packet)
-				if ok {
-					select {
-					case eventChan <- event:
-						// Event sent successfully
-					default:
-						log.Println("Warning: eventChan is full, dropping event.")
-					}
-					buffer = buffer[5:]
-				} else {
-					log.Println("Invalid packet received, shifting buffer by 1 byte.")
-					buffer = buffer[1:]
-				}
-			}
-
-			// Handle outgoing writes if available
-			select {
-			case ev := <-writeChan:
-				data := protocol.Marshal(ev)
-				_, err := s.Write(data)
-				if err != nil {
-					log.Println("Error writing to serial port:", err)
-				} else {
-					log.Printf("Sent data: % X\n", data)
-				}
-			default:
-				// No write to perform
-			}
-		}
-	}
-}
-
-func setEventSender(writeChan chan<- protocol.Event, shutdownChan <-chan struct{}) {
+func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <-chan struct{}) {
 	// Initialize OLE for this goroutine
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -305,7 +214,8 @@ func setEventSender(writeChan chan<- protocol.Event, shutdownChan <-chan struct{
 	defer ole.CoUninitialize()
 
 	sendSetEvents := func() {
-		log.Println("Sending set events to synchronize device state.")
+		// log.Println("Sending set events to synchronize device state.")
+		slog.Info("sending set events to synchronize device state")
 		configLock.RLock()
 		combos := config.Combos
 		configLock.RUnlock()
@@ -314,12 +224,13 @@ func setEventSender(writeChan chan<- protocol.Event, shutdownChan <-chan struct{
 			// Retrieve the current volume level
 			currentVolume, err := getCurrentVolume(combo.DeviceID)
 			if err != nil {
-				log.Printf("Error getting current volume for device %s: %v", combo.DeviceID, err)
+				// log.Printf("Error getting current volume for device %s: %v", combo.DeviceID, err)
+				slog.Error("error getting current volume", "deviceID", combo.DeviceID, "err", err)
 				continue
 			}
 
 			// Create a set event
-			event := protocol.Event{
+			event := &protocol.Event{
 				Type:  protocol.EVENT_TYPE_SET,
 				Combo: combo.Combo,
 				State: uint8(currentVolume),
@@ -328,9 +239,10 @@ func setEventSender(writeChan chan<- protocol.Event, shutdownChan <-chan struct{
 			// Send the packet to writeChan
 			select {
 			case writeChan <- event:
-				log.Printf("Queued set event for combo %d with state %d%%.", event.Combo, event.State)
+				// log.Printf("Queued set event for combo %d with state %d%%.", event.Combo, event.State)
 			case <-shutdownChan:
-				log.Println("Set event sender received shutdown signal.")
+				// log.Println("Set event sender received shutdown signal.")
+				slog.Info("set event sender received shutdown signal")
 				return
 			}
 		}
@@ -352,25 +264,26 @@ func setEventSender(writeChan chan<- protocol.Event, shutdownChan <-chan struct{
 		case <-ticker.C:
 			sendSetEvents()
 		case <-shutdownChan:
-			log.Println("Set event sender shutting down.")
+			// log.Println("Set event sender shutting down.")
+			slog.Info("set event sender shutting down")
 			return
 		}
 	}
 }
 
-func eventProcessor(eventChan <-chan protocol.Event, shutdownChan <-chan struct{}) {
-	for {
-		select {
-		case event := <-eventChan:
-			handleEvent(event)
-		case <-shutdownChan:
-			log.Println("Event processor shutting down.")
-			return
-		}
-	}
+type DeviceMatcher struct{}
+
+func (DeviceMatcher) Match(info reliableserial.DeviceInfo) (_ bool) {
+	return info.Name == config.PortName
 }
 
 func main() {
+	logger := slog.New(prettyslog.NewPrettyslogHandler("5ac",
+		prettyslog.WithLevel(slog.LevelDebug),
+		// prettyslog.WithWriter(file),
+	))
+
+	slog.SetDefault(logger)
 	portName := flag.String("port", "", "Serial port name (e.g., COM3)")
 	flag.Parse()
 
@@ -386,56 +299,57 @@ func main() {
 		log.Fatal("No serial port specified. Use the -port flag to specify the serial port.")
 	}
 
-	initLogging(config.LogFile)
+	// initLogging(config.LogFile)
 
 	go configReloader(shutdownChan)
 
-	// Open serial port with ReadTimeout set in serial.Config
-	serialConfig := &serial.Config{
-		Name:        config.PortName,
-		Baud:        config.BaudRate,
-		ReadTimeout: config.ConfigReloadPeriod, // Adjust as needed
-	}
-	s, err := serial.OpenPort(serialConfig)
-	if err != nil {
-		log.Fatalf("Failed to open serial port %s: %v", config.PortName, err)
-	}
-	defer func() {
-		err := s.Close()
+	rs := reliableserial.NewReliableSerial(
+		DeviceMatcher{},
+		reliableserial.SerialConfig{
+			BaudRate: config.BaudRate,
+		},
+		logger,
+		func() []byte {
+			return []byte{0xF0}
+		},
+		func() reliableserial.Serializable { return &protocol.Event{} },
+	)
+	defer rs.Close()
+
+	go setEventSender(rs.SendChannel(), shutdownChan)
+
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED)
 		if err != nil {
-			log.Println("Error closing serial port:", err)
+			log.Fatalf("Failed to initialize COM in setEventSender: %v", err)
+		}
+		defer ole.CoUninitialize()
+
+		for msg := range rs.ReceiveChannel() {
+			if m, ok := msg.(*protocol.Event); ok {
+				handleEvent(*m)
+			}
 		}
 	}()
-	log.Printf("Serial port %s opened with baud rate %d.", config.PortName, config.BaudRate)
-
-	// greeting := []byte("Moin\n")
-	// _, err = s.Write(greeting)
-	// if err != nil {
-	// 	log.Fatalf("Failed to send greeting to serial port: %v", err)
-	// }
-	// log.Printf("Sent greeting: %s", greeting)
-
-	// Start serial handler goroutine
-	go serialHandler(s, writeChan, eventChan, shutdownChan)
-
-	// Start set event sender goroutine
-	go setEventSender(writeChan, shutdownChan)
-
-	// Start event processor goroutine
-	go eventProcessor(eventChan, shutdownChan)
 
 	// Wait for interrupt signal to gracefully shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
-	log.Println("Application is running. Press Ctrl+C to exit.")
+	// log.Println("Application is running. Press Ctrl+C to exit.")
+	slog.Info("application is running. press Ctrl+C to exit")
 	<-sigs
-	log.Println("Interrupt signal received. Initiating shutdown.")
+	// log.Println("Interrupt signal received. Initiating shutdown.")
+	slog.Info("interrupt signal received. initiating shutdown")
 
 	// Signal all goroutines to stop
 	close(shutdownChan)
 
 	// Allow some time for goroutines to finish
 	time.Sleep(1 * time.Second)
-	log.Println("Application terminated gracefully.")
+	// log.Println("Application terminated gracefully.")
+	slog.Info("application terminated gracefully")
 }
