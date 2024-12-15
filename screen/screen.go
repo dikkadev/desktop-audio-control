@@ -125,31 +125,6 @@ var Image = []byte{
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
-// func selectChannel(bus *machine.I2C, channel uint8) error {
-// 	println("Selecting channel", channel)
-// 	if channel > 7 {
-// 		return errors.New("invalid channel; must be between 0 and 7")
-// 	}
-// 	data := []byte{1 << channel}
-// 	return bus.Tx(0x70, data, nil)
-// }
-//
-// func drawImageOnScreen(bus *machine.I2C, img []byte) error {
-// 	display := sh1106.NewI2C(bus)
-// 	display.Configure(sh1106.Config{
-// 		Width:    128,
-// 		Height:   64,
-// 		VccState: sh1106.SWITCHCAPVCC,
-// 		Address:  ADDR,
-// 	})
-//
-// 	display.ClearBuffer()
-//
-// 	display.SetBuffer(img)
-//
-// 	return display.Display()
-// }
-
 func (s *Screen) Activate() {
 	if mux == nil {
 		panic("Multiplexer not initialized")
@@ -159,14 +134,6 @@ func (s *Screen) Activate() {
 		panic(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	// Display.Configure(sh1106.Config{
-	// 	Width:    128,
-	// 	Height:   64,
-	// 	VccState: sh1106.SWITCHCAPVCC,
-	// 	Address:  ADDR,
-	// })
-
-	// println("Screen", s.MuxChannel, "activated")
 }
 
 func (s *Screen) Clear() {

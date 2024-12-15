@@ -40,8 +40,12 @@ func NewCombo(i2c *machine.I2C, screenChannel uint8, encoderAddress uint16, name
 	return &c
 }
 
-func (c *Combo) SetState(state uint8) {
+func (c *Combo) SetState(state uint8) bool {
+	if state == c.state {
+		return false
+	}
 	c.state = state
+	return true
 }
 
 const (
@@ -215,4 +219,10 @@ func drawCorner(centerX, centerY, radius int16, quadrant int) {
 			screenlib.Display.SetPixel(centerX+dy, centerY+dx, drawColor)
 		}
 	}
+}
+
+func (c *Combo) ClearScreen() {
+	c.screen.Activate()
+	screenlib.Display.ClearBuffer()
+	screenlib.Display.Display()
 }

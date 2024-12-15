@@ -16,11 +16,16 @@ const (
 	muxAddr = 0x70
 
 	DELIMINATOR = 0xF0
+
+	INACTIVITY_TIMEOUT = 15 * time.Second
 )
 
 var (
 	combos = make([]*combo.Combo, 5, 5)
 	names  = []string{"Game", "Chat", "Media", "Aux", "Speak"}
+
+	lastActivity = time.Now()
+	screenOn     = true
 )
 
 func main() {
@@ -42,7 +47,6 @@ func main() {
 
 	mux := multiplexer.NewMultiplexer(i2c, muxAddr)
 
-	// Initialize all channels
 	for i := 0; i < 5; i++ {
 		mux.Select(uint8(i))
 		if i2c.Tx(0x3C, []byte{0x00}, nil) != nil {
@@ -50,7 +54,6 @@ func main() {
 		}
 	}
 
-	// Initialize the screen
 	screenlib.Initialize(i2c, mux)
 	time.Sleep(time.Millisecond * 100)
 
@@ -60,10 +63,8 @@ func main() {
 		combos[i].Draw()
 	}
 
-	// Initialize Serial
 	serial := machine.Serial
 
-	// Buffer to store incoming serial data
 	const eventLength = 6
 	buffer := make([]byte, 0, eventLength)
 
@@ -72,7 +73,6 @@ func main() {
 	for {
 		updated := false
 
-		// Handle incoming serial data
 		for serial.Buffered() > 0 {
 			b, err := serial.ReadByte()
 			if err != nil {
@@ -81,23 +81,18 @@ func main() {
 			}
 			buffer = append(buffer, b)
 
-			// Check if buffer has enough data for an event
 			if len(buffer) >= eventLength {
-				// Attempt to unmarshal the event
 				event, ok := protocol.Unmarshal(buffer[:eventLength-1])
 				if ok {
 					handleEvent(event)
-					// serial.Write(protocol.NewEvent(protocol.EVENT_TYPE_ACK, event.Combo, event.State).
 					serial.Write(protocol.Marshal(protocol.Event{Type: protocol.EVENT_TYPE_ACK, Combo: event.Combo, State: event.State}))
 				} else {
 					// println("Invalid event received")
 				}
-				// Remove the processed bytes from the buffer
 				buffer = buffer[eventLength:]
 			}
 		}
 
-		// Handle combo updates
 		for i := 0; i < 5; i++ {
 			if event, ok := combos[i].Update(); ok {
 				combos[i].Draw()
@@ -108,17 +103,25 @@ func main() {
 				if err != nil {
 					println("ERROR: ", err)
 				}
+				lastActivity = time.Now()
 			}
 		}
 
-		// Sleep briefly if no updates occurred
+		if screenOn && time.Since(lastActivity) > INACTIVITY_TIMEOUT {
+			turnScreensOff()
+		}
+
+		if !screenOn && updated {
+			turnScreensOn()
+		}
+
 		if !updated {
 			time.Sleep(time.Millisecond * 3)
 		}
+
 	}
 }
 
-// blinks the ws2812 LED @ gp16 3 times
 func blinkInternal() {
 	onTime := 100 * time.Millisecond
 	offTime := 100 * time.Millisecond
@@ -131,23 +134,38 @@ func blinkInternal() {
 	}
 }
 
-// handleEvent processes incoming events
 func handleEvent(e protocol.Event) {
-	// println("Received event:", e.String())
-	// blinkInternal()
 	switch e.Type {
 	case protocol.EVENT_TYPE_ACK:
 		println("Received ACK event for Combo:", e.Combo, "with State:", e.State)
 	case protocol.EVENT_TYPE_SET:
 		if e.Combo < uint8(len(combos)) {
-			// println("Received SET event for Combo:", e.Combo, "with State:", e.State)
-			combos[e.Combo].SetState(e.State)
-			combos[e.Combo].Draw()
+			changed := combos[e.Combo].SetState(e.State)
+			if changed {
+				combos[e.Combo].Draw()
+				lastActivity = time.Now()
+			}
 		} else {
 			println("Invalid Combo ID in SET event:", e.Combo)
 		}
 	default:
-		// Handle other event types if necessary
 		println("Received non-SET event:", e.String())
 	}
+}
+
+func turnScreensOff() {
+	for _, c := range combos {
+		c.ClearScreen()
+	}
+	screenOn = false
+	println("Screens turned off due to inactivity")
+}
+
+// turnScreensOn turns on all the displays
+func turnScreensOn() {
+	for _, c := range combos {
+		c.Draw()
+	}
+	screenOn = true
+	println("Screens turned on due to activity")
 }
