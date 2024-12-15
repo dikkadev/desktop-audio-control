@@ -131,7 +131,7 @@ func (c *Combo) Draw() {
 	c.screen.Activate()
 	screenlib.Display.ClearBuffer()
 
-	centerText(c.name, &freemono.Regular9pt7b, TEXT_HEIGHT)
+	centerText(c.name, &freemono.Regular9pt7b, TEXT_HEIGHT+8)
 	bar(int(c.state))
 
 	screenlib.Display.Display()
@@ -151,8 +151,8 @@ const (
 )
 
 func bar(fill int) {
-	var leftX int16 = 17
-	var rightX int16 = 118
+	var leftX int16 = 23
+	var rightX int16 = 124
 	var topY int16 = 17
 	var bottomY int16 = 47
 	var radius int16 = 10
