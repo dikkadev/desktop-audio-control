@@ -53,7 +53,6 @@ func loadConfig() {
 
 	data, err := os.ReadFile(configFile)
 	if err != nil {
-		// log.Println("Error reading config file:", err)
 		slog.Warn("error reading config file", "err", err)
 		return
 	}
@@ -61,13 +60,11 @@ func loadConfig() {
 	var newConfig Config
 	err = yaml.Unmarshal(data, &newConfig)
 	if err != nil {
-		// log.Println("Error parsing config file:", err)
 		slog.Warn("error parsing config file", "err", err)
 		return
 	}
 
 	config = newConfig
-	// log.Println("Configuration reloaded.")
 	slog.Info("configuration reloaded")
 }
 
@@ -115,7 +112,6 @@ func getDeviceEnumerator() (*wca.IMMDeviceEnumerator, error) {
 	mmdeOnce.Do(func() {
 		err = wca.CoCreateInstance(wca.CLSID_MMDeviceEnumerator, 0, wca.CLSCTX_ALL, wca.IID_IMMDeviceEnumerator, &mmde)
 		if err != nil {
-			// log.Println("Failed to create IMMDeviceEnumerator:", err)
 			slog.Error("failed to create IMMDeviceEnumerator", "err", err)
 		}
 	})
@@ -153,12 +149,10 @@ func oleInvoke(deviceID string, f func(aev *wca.IAudioEndpointVolume) (interface
 }
 
 func handleEvent(event protocol.Event) {
-	// log.Println("Received event:", event.String())
 	slog.Info("received event", "event", event.String())
 
 	comboConfig := getComboConfig(event.Combo)
 	if comboConfig == nil {
-		// log.Println("No configuration found for combo:", event.Combo)
 		slog.Warn("no configuration found for combo", "combo", event.Combo)
 		return
 	}
@@ -174,10 +168,8 @@ func handleEvent(event protocol.Event) {
 
 	err := setVolume(comboConfig.DeviceID, volumeLevel)
 	if err != nil {
-		// log.Println("Error setting volume for device", comboConfig.DeviceID, ":", err)
 		slog.Error("error setting volume", "deviceID", comboConfig.DeviceID, "err", err)
 	} else {
-		// log.Printf("Set volume to %d%% for device %s", state, comboConfig.DeviceID)
 		slog.Info("set volume", "state", state, "deviceID", comboConfig.DeviceID)
 	}
 }
@@ -195,7 +187,6 @@ func configReloader(shutdownChan <-chan struct{}) {
 		case <-ticker.C:
 			loadConfig()
 		case <-shutdownChan:
-			// log.Println("Configuration reloader shutting down.")
 			slog.Info("configuration reloader shutting down")
 			return
 		}
@@ -214,7 +205,6 @@ func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <
 	defer ole.CoUninitialize()
 
 	sendSetEvents := func() {
-		// log.Println("Sending set events to synchronize device state.")
 		slog.Info("sending set events to synchronize device state")
 		configLock.RLock()
 		combos := config.Combos
@@ -224,7 +214,6 @@ func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <
 			// Retrieve the current volume level
 			currentVolume, err := getCurrentVolume(combo.DeviceID)
 			if err != nil {
-				// log.Printf("Error getting current volume for device %s: %v", combo.DeviceID, err)
 				slog.Error("error getting current volume", "deviceID", combo.DeviceID, "err", err)
 				continue
 			}
@@ -239,9 +228,7 @@ func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <
 			// Send the packet to writeChan
 			select {
 			case writeChan <- event:
-				// log.Printf("Queued set event for combo %d with state %d%%.", event.Combo, event.State)
 			case <-shutdownChan:
-				// log.Println("Set event sender received shutdown signal.")
 				slog.Info("set event sender received shutdown signal")
 				return
 			}
@@ -264,7 +251,6 @@ func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <
 		case <-ticker.C:
 			sendSetEvents()
 		case <-shutdownChan:
-			// log.Println("Set event sender shutting down.")
 			slog.Info("set event sender shutting down")
 			return
 		}
@@ -339,10 +325,8 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
-	// log.Println("Application is running. Press Ctrl+C to exit.")
 	slog.Info("application is running. press Ctrl+C to exit")
 	<-sigs
-	// log.Println("Interrupt signal received. Initiating shutdown.")
 	slog.Info("interrupt signal received. initiating shutdown")
 
 	// Signal all goroutines to stop
@@ -350,6 +334,5 @@ func main() {
 
 	// Allow some time for goroutines to finish
 	time.Sleep(1 * time.Second)
-	// log.Println("Application terminated gracefully.")
 	slog.Info("application terminated gracefully")
 }
