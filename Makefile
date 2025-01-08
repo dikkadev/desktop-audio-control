@@ -54,7 +54,7 @@ build: $(dist_dir)
 ## flash the firmware (manual copy to bootloader drive)
 .PHONY: flash
 flash: build
-	@timeout=15; \
+	@timeout=20; \
 	echo -n "Waiting for bootloader drive $(bootloader_drive) to appear"; \
 	while [ ! -d "$(bootloader_drive)" ] && [ $$timeout -gt 0 ]; do \
 		echo -n ""; \

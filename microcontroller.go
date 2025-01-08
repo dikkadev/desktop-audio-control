@@ -161,7 +161,6 @@ func turnScreensOff() {
 	println("Screens turned off due to inactivity")
 }
 
-// turnScreensOn turns on all the displays
 func turnScreensOn() {
 	for _, c := range combos {
 		c.Draw()

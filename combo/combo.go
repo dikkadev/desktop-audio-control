@@ -4,6 +4,7 @@ import (
 	"desktop-audio-ctrl/protocol"
 	"desktop-audio-ctrl/rotary"
 	screenlib "desktop-audio-ctrl/screen"
+	"fmt"
 	"image/color"
 	"machine"
 	"math"
@@ -132,7 +133,7 @@ func (c *Combo) Draw() {
 	screenlib.Display.ClearBuffer()
 
 	centerText(c.name, &freemono.Regular9pt7b, TEXT_HEIGHT+8)
-	bar(int(c.state))
+	bar(c.state)
 
 	screenlib.Display.Display()
 }
@@ -150,11 +151,13 @@ const (
 	quadrantBottomRight
 )
 
-func bar(fill int) {
+func bar(volume uint8) {
 	var leftX int16 = 23
 	var rightX int16 = 124
-	var topY int16 = 17
-	var bottomY int16 = 47
+	// var topY int16 = 17
+	var bottomY int16 = 64 - 10
+	var topY int16 = bottomY - 30
+	// var bottomY int16 = 47
 	var radius int16 = 10
 
 	for y := topY + radius; y <= bottomY-radius; y++ {
@@ -172,8 +175,8 @@ func bar(fill int) {
 	drawCorner(leftX+radius, bottomY-radius, radius, quadrantBottomLeft)
 	drawCorner(rightX-radius, bottomY-radius, radius, quadrantBottomRight)
 
-	if fill > 0 {
-		startX := rightX - 1 - int16(fill-1)
+	if volume > 0 {
+		startX := rightX - 1 - int16(volume-1)
 		if startX < leftX+1 {
 			startX = leftX + 1
 		}
@@ -199,6 +202,27 @@ func bar(fill int) {
 			}
 		}
 	}
+
+	var text string
+	if volume == 100 {
+		text = "!!"
+	} else {
+		text = fmt.Sprintf("%02d", volume)
+	}
+	var space int16 = 64 - topY
+	var textStartY int16 = topY - space/2 + TEXT_HEIGHT*2 - 2
+	var textPosX int16 = rightX - int16(volume) + TEXT_HEIGHT/2
+	var textTop int16 = textPosX - TEXT_HEIGHT
+	var internalOffset int16 = 3
+
+	if textTop < leftX+internalOffset {
+		textPosX = leftX + TEXT_HEIGHT + internalOffset
+	}
+	if textPosX > rightX-internalOffset {
+		textPosX = rightX - internalOffset
+	}
+
+	tinyfont.WriteLineRotated(screenlib.Display, &freemono.Regular9pt7b, textPosX, textStartY, text, drawColor, tinyfont.ROTATION_270)
 }
 
 func drawCorner(centerX, centerY, radius int16, quadrant int) {
