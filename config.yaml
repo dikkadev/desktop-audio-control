@@ -2,13 +2,13 @@ portName: "COM11"
 baudRate: 115200
 combos:
   - combo: 0
-    deviceID: "{0.0.0.00000000}.{9285d823-5344-4e5e-a6f6-c3435216944e}" # SteelSeries Sonar - Gaming
+    deviceID: "{0.0.0.00000000}.{3578bc7e-8711-4579-98df-cbbedb3c4d18}" # SteelSeries Sonar - Gaming
   - combo: 1
-    deviceID: "{0.0.0.00000000}.{21b28250-8fc2-4632-ac6a-d9c25993e1fa}" # SteelSeries Sonar - Chat
+    deviceID: "{0.0.0.00000000}.{5463c949-d992-48bd-8d03-512975835d09}" # SteelSeries Sonar - Chat
   - combo: 2
-    deviceID: "{0.0.0.00000000}.{0ce8573c-d116-49b3-8619-5349caa0f6f9}" # SteelSeries Sonar - Media
+    deviceID: "{0.0.0.00000000}.{a5c5ba10-f484-445a-9c52-64c72572086a}" # SteelSeries Sonar - Media
   - combo: 3
-    deviceID: "{0.0.0.00000000}.{322406ce-2d81-4885-a312-d0f3f64b7db5}" # SteelSeries Sonar - Aux
+    deviceID: "{0.0.0.00000000}.{0916df55-fca1-4f59-9481-81598fdd1813}" # SteelSeries Sonar - Aux
   - combo: 4
     deviceID: "{0.0.0.00000000}.{90ae6596-507c-44cc-bed9-ae9534a97265}" # Speakers (Realtek(R) Audio)
 configReloadPeriod: 10m
