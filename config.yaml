@@ -2,15 +2,64 @@ portName: "COM11"
 baudRate: 115200
 combos:
   - combo: 0
-    deviceID: "{0.0.0.00000000}.{3578bc7e-8711-4579-98df-cbbedb3c4d18}" # SteelSeries Sonar - Gaming
+    deviceName: "SteelSeries Sonar Gaming"
   - combo: 1
-    deviceID: "{0.0.0.00000000}.{5463c949-d992-48bd-8d03-512975835d09}" # SteelSeries Sonar - Chat
+    deviceName: "SteelSeries Sonar Chat"
   - combo: 2
-    deviceID: "{0.0.0.00000000}.{a5c5ba10-f484-445a-9c52-64c72572086a}" # SteelSeries Sonar - Media
+    deviceName: "SteelSeries Sonar Media"
   - combo: 3
-    deviceID: "{0.0.0.00000000}.{0916df55-fca1-4f59-9481-81598fdd1813}" # SteelSeries Sonar - Aux
+    deviceName: "SteelSeries Sonar Aux"
   - combo: 4
-    deviceID: "{0.0.0.00000000}.{90ae6596-507c-44cc-bed9-ae9534a97265}" # Speakers (Realtek(R) Audio)
+    deviceName: "Bose NC 700 Headphones"
+    fallbackNames: ["Realtek Speakers", "Speakers Realtek"]
 configReloadPeriod: 10m
 setEventPeriod: 5s
+
+# Device Matching Vocabulary Configuration
+# =======================================
+# Define the vocabulary used for semantic device matching.
+# Order matters as each term becomes a dimension in the feature vector.
+# Terms are matched case-insensitively and support partial substring matching.
+# 
+# If not specified, a sensible default vocabulary will be used.
+# You can customize this list based on your specific audio devices.
+deviceMatchingVocabulary:
+  # Brand names
+  - "steelseries"
+  - "realtek"
+  - "bose"
+  - "logitech"
+  - "corsair"
+  
+  # Product series/lines
+  - "sonar"
+  - "arctis"
+  - "nc"
+  - "700"
+  - "astro"
+  
+  # Device types
+  - "gaming"
+  - "chat"
+  - "media"
+  - "aux"
+  - "microphone"
+  - "speakers"
+  - "headphones"
+  - "headset"
+  
+  # Audio descriptors
+  - "audio"
+  - "playback"
+  - "output"
+  - "input"
+  - "surround"
+  - "stereo"
+  
+  # Connection types
+  - "usb"
+  - "wireless"
+  - "bluetooth"
+  - "analog"
+
 # logFile: "app.log"
