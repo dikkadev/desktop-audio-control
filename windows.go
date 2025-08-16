@@ -1,12 +1,14 @@
 package main
 
 import (
+	"desktop-audio-ctrl/mapper"
 	"desktop-audio-ctrl/pkg/reliableserial"
 	"desktop-audio-ctrl/protocol"
 	"flag"
 	"fmt"
 	"log"
 	"log/slog"
+	"math"
 	"os"
 	"os/signal"
 	"runtime"
@@ -31,6 +33,7 @@ type Config struct {
 	Combos             []ComboConfig `yaml:"combos"`
 	ConfigReloadPeriod time.Duration `yaml:"configReloadPeriod"`
 	SetEventPeriod     time.Duration `yaml:"setEventPeriod"`
+	VolumeMapper       string        `yaml:"volumeMapper"`
 }
 
 var (
@@ -66,6 +69,8 @@ func loadConfig() {
 
 	config = newConfig
 	slog.Info("configuration reloaded")
+
+	mapper.SetCurrentMapper(config.VolumeMapper)
 }
 
 func getComboConfig(combo uint8) *ComboConfig {
@@ -80,20 +85,20 @@ func getComboConfig(combo uint8) *ComboConfig {
 	return nil
 }
 
-func getCurrentVolume(deviceID string) (int, error) {
+func getCurrentVolume(deviceID string) (float32, error) {
 	vol, err := oleInvoke(deviceID, func(aev *wca.IAudioEndpointVolume) (interface{}, error) {
 		var level float32
 		err := aev.GetMasterVolumeLevelScalar(&level)
 		if err != nil {
 			return nil, err
 		}
-		vol := int(level * 100.0)
+		vol := level
 		return vol, nil
 	})
 	if err != nil {
 		return 0, err
 	}
-	return vol.(int), nil
+	return vol.(float32), nil
 }
 
 func setVolume(deviceID string, volumeLevel float32) error {
@@ -157,6 +162,8 @@ func handleEvent(event protocol.Event) {
 		return
 	}
 
+	logger := slog.Default().WithGroup(fmt.Sprintf("combo%d", comboConfig.Combo))
+
 	state := event.State
 	if state < 0 {
 		state = 0
@@ -164,13 +171,14 @@ func handleEvent(event protocol.Event) {
 		state = 100
 	}
 
-	volumeLevel := float32(state) / 100.0
+	volumeLevel := float32(mapper.CurrentMapper.Map(float64(state) / 100.0))
+	logger.Debug("Mapped state→volume", "state", state, "vol", volumeLevel)
 
 	err := setVolume(comboConfig.DeviceID, volumeLevel)
 	if err != nil {
-		slog.Error("error setting volume", "deviceID", comboConfig.DeviceID, "err", err)
+		logger.Error("error setting volume", "deviceID", comboConfig.DeviceID, "err", err)
 	} else {
-		slog.Info("set volume", "state", state, "deviceID", comboConfig.DeviceID)
+		logger.Info("set volume", "state", state, "deviceID", comboConfig.DeviceID)
 	}
 }
 
@@ -211,25 +219,30 @@ func setEventSender(writeChan chan<- reliableserial.Serializable, shutdownChan <
 		configLock.RUnlock()
 
 		for _, combo := range combos {
+			logger := slog.Default().WithGroup(fmt.Sprintf("combo%d", combo.Combo))
+
 			// Retrieve the current volume level
 			currentVolume, err := getCurrentVolume(combo.DeviceID)
 			if err != nil {
-				slog.Error("error getting current volume", "deviceID", combo.DeviceID, "err", err)
+				logger.Error("error getting current volume", "deviceID", combo.DeviceID, "err", err)
 				continue
 			}
+
+			mappedVolume := uint8(math.Round(mapper.CurrentMapper.MapReverse(float64(currentVolume)) * 100.0))
+			logger.Debug("Mapped volume→state", "vol", currentVolume, "value", mappedVolume)
 
 			// Create a set event
 			event := &protocol.Event{
 				Type:  protocol.EVENT_TYPE_SET,
 				Combo: combo.Combo,
-				State: uint8(currentVolume),
+				State: mappedVolume,
 			}
 
 			// Send the packet to writeChan
 			select {
 			case writeChan <- event:
 			case <-shutdownChan:
-				slog.Info("set event sender received shutdown signal")
+				logger.Info("set event sender received shutdown signal")
 				return
 			}
 		}

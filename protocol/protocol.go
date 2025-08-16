@@ -18,6 +18,7 @@ const (
 	// host -> device
 	EVENT_TYPE_SET
 
+	// common
 	EVENT_TYPE_ACK
 )
 
